@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from fraud_service.api.app import create_app
 from fraud_service.api.routes import get_scorer
 from fraud_service.service.scorer import FraudScorer
-from tests.conftest import BLOCK_THRESHOLD, StubModel
+from tests.support import BLOCK_THRESHOLD, StubModel
 
 pytestmark = pytest.mark.integration
 

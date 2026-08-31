@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from tests.conftest import make_transaction
+from tests.support import make_transaction
 
 
 @pytest.mark.unit

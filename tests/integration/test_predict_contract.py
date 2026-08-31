@@ -1,7 +1,7 @@
 """The full HTTP contract for a valid request: status, envelope, headers."""
 import pytest
 
-from tests.conftest import STUB_PROBABILITY
+from tests.support import STUB_PROBABILITY
 
 pytestmark = pytest.mark.integration
 
