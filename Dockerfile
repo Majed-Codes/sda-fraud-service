@@ -14,7 +14,9 @@ RUN python -m venv /opt/venv
 WORKDIR /build
 
 COPY requirements.txt ./
-RUN pip install -r requirements.txt
+RUN pip install -r requirements.txt \
+ && find /opt/venv -type d -name tests -prune -exec rm -rf {} + \
+ && find /opt/venv -type f -name '*.so' -exec strip --strip-unneeded {} +
 
 COPY pyproject.toml ./
 COPY src ./src
@@ -36,7 +38,12 @@ RUN groupadd --system --gid 10001 app \
 COPY --from=builder /opt/venv /opt/venv
 
 COPY --from=builder /wheels /wheels
-RUN pip install --no-deps /wheels/*.whl && rm -rf /wheels
+RUN pip install --no-deps /wheels/*.whl \
+ && rm -rf /wheels /opt/venv/lib/python3.13/site-packages/pip \
+           /opt/venv/lib/python3.13/site-packages/pip-*.dist-info \
+           /opt/venv/lib/python3.13/site-packages/setuptools \
+           /opt/venv/lib/python3.13/site-packages/setuptools-*.dist-info \
+           /opt/venv/lib/python3.13/site-packages/pkg_resources
 
 WORKDIR /app
 COPY --chown=app:app models ./models

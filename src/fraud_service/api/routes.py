@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fraud_service.api.schemas import HealthResponse, PredictRequest, PredictResponse, ReadyResponse
 from fraud_service.service.scorer import FraudScorer
 
-router = APIRouter(tags=["v1"])
+router = APIRouter(tags=["fraud"])
 
 
 def get_scorer(request: Request) -> FraudScorer:

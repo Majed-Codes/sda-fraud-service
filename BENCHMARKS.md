@@ -1,110 +1,126 @@
 # Benchmarks
 
 Host: Apple Silicon (arm64), macOS 25.5, Docker Engine 29.5.2, Compose 5.5.0.
-All images built and run natively for `linux/arm64` — no `--platform linux/amd64`
-emulation, so the container numbers are not paying a QEMU tax.
+Images build and run natively for `linux/arm64` — no `--platform linux/amd64`
+emulation, so the container numbers pay no QEMU tax.
 
-Load driver: 1000 POSTs to `/v1/predict` with `payloads/sample.json` over
-keep-alive connections, at concurrency 1 and 20. Every run returned 1000× 200.
+Load driver: `scripts/loadtest.py` — 1000 POSTs to `/v1/predict` with
+`payloads/sample.json` over keep-alive connections, at concurrency 1 and 20.
+Every run below returned 1000× 200.
 
-## Lab 3 — image size and build time
+```bash
+python scripts/loadtest.py 127.0.0.1 8080 1000 20
+```
 
-| Image | Dockerfile | Base | Size | Cold build | Warm rebuild (1-line `routes.py` edit) |
+## Image size and build time
+
+| Image | Dockerfile | Base | Size | Cold build | Warm rebuild after 1-line `routes.py` edit |
 |---|---|---|---|---|---|
-| `fraud-service:naive` | `Dockerfile.naive` | `python:3.13` | **2.32 GB** | 133 s (`--no-cache`) | n/a — `COPY . .` precedes the install, so every edit reinstalls everything |
-| `fraud-service:slim` | `Dockerfile` | `python:3.13-slim` (multi-stage) | **744 MB** | 249 s | **16 s** |
+| `fraud-service:naive` | `Dockerfile.naive` | `python:3.13` | **2.32 GB** | 133 s (`--no-cache`) | n/a — `COPY . .` precedes the install, so any edit reinstalls everything |
+| `fraud-service:slim` | `Dockerfile` | `python:3.13-slim`, multi-stage | **573 MB** | 195 s | **15 s** |
 
-3.1× smaller. The gap comes from three things, in order of size:
+**4.1× smaller.** Where the 1.75 GB went, largest first:
 
-1. `python:3.13` carries a full build toolchain and headers (~1.0 GB before a
-   single dependency lands); `python:3.13-slim` is ~150 MB.
-2. `build-essential` is installed in the builder stage only and never reaches
-   the runtime stage.
-3. The naive image ships the whole build context (`data/`, the notebook, the
-   editable-install source tree); the runtime stage ships only `/opt/venv`,
-   the installed wheel, and `models/`.
+1. `python:3.13` ships a full build toolchain and headers — ~1.0 GB before a
+   single dependency lands. `python:3.13-slim` is ~150 MB.
+2. `build-essential` exists only in the builder stage and never reaches the
+   runtime image.
+3. The naive image ships the entire build context — `data/` (20 k CSV rows),
+   the notebook, the editable-install source tree. The runtime stage ships
+   `/opt/venv`, the installed wheel, and `models/`.
+4. Pruning inside the builder: `tests/` directories removed from site-packages
+   and `strip --strip-unneeded` over every `.so` (numpy, scipy, scikit-learn
+   and pandas ship large debug symbol tables). This alone took the multi-stage
+   image from 744 MB to 573 MB — 23 % — and the scored output is unchanged.
+5. `pip`, `setuptools` and `pkg_resources` are deleted from the runtime venv
+   after the wheel is installed. Nothing at runtime installs packages.
 
-The remaining 744 MB is dominated by scipy/numpy/scikit-learn/pandas — that is
-the real floor for this dependency set, not packaging slack.
+The residual 573 MB is scipy/numpy/scikit-learn/pandas. That is the honest
+floor for this dependency set, not packaging slack.
 
 ### Cache discipline
 
 Warm rebuild after editing one line of `src/fraud_service/api/routes.py`:
-**16 s**, with `RUN pip install -r requirements.txt` and
-`COPY --from=builder /opt/venv /opt/venv` both reported as `Using cache`.
+**15 s**, with both `RUN pip install -r requirements.txt` and
+`COPY --from=builder /opt/venv /opt/venv` reported `CACHED`.
 
-Two ordering decisions make that work:
+Two ordering decisions buy that:
 
 - `requirements.txt` is copied and installed *before* `COPY src ./src`, so a
-  source edit never invalidates the dependency layer.
+  source edit cannot invalidate the dependency layer. Pinning it separately
+  from `pyproject.toml` is what makes that layer stable.
 - The application is **not** installed into `/opt/venv` in the builder. The
-  builder emits a wheel; the runtime stage copies the venv (a large,
-  source-independent layer) and then installs the wheel in a separate, tiny
-  layer. Installing the app into the venv instead made the venv layer
-  source-dependent and pushed the warm rebuild to 35 s, because the ~700 MB
-  `COPY --from=builder` had to run again on every edit.
+  builder emits a wheel; the runtime stage copies the venv — a large,
+  source-independent layer — and installs the wheel in its own small layer.
+  Installing the app into the venv instead makes that ~700 MB
+  `COPY --from=builder` source-dependent and pushes the warm rebuild to 35 s,
+  measured. The dependency-install layer stays cached either way, which is
+  why layer count alone is a bad proxy for cache health.
 
-## Lab 3 — time to ready
+## Time to ready
 
-`docker compose up` (images already built) → both services `healthy`:
+`docker compose up` with images already built:
 
 | Milestone | Seconds from `up` |
 |---|---|
-| `docker compose up -d` returns | 5.5 |
-| `redis` healthy | 5.6 |
-| `api` healthy | **10.7** |
+| `docker compose up -d` returns | 6.2 |
+| `redis` healthy | 6.4 |
+| `api` healthy | **11.6** |
 
-The API process itself is ready far sooner — `model_loaded version=v3.2.0
-seconds=0.639`, warm-up prediction included. The remaining ~10 s is scheduling,
-not work: the API is gated behind `depends_on: redis: condition: service_healthy`
-(~5.6 s), and its own healthcheck is only sampled every `interval: 5s`.
-Tightening `interval`/`start_period` moves this number; it will not make the
-service ready any sooner.
+The API process is ready long before that: `model_loaded version=v3.2.0
+seconds=0.714`, warm-up prediction included. The remaining ~11 s is scheduling,
+not work — the API is gated behind `depends_on: redis: condition:
+service_healthy` (~6.4 s) and its own healthcheck is sampled only every
+`interval: 5s`. Tightening `interval`/`start_period` moves this number; it will
+not make the service ready any sooner.
 
 ## Latency: container vs bare metal
 
 Bare metal = `uvicorn` in the local `.venv` (CPython 3.11) on `127.0.0.1:8090`.
-Container = the compose stack, published on `127.0.0.1:8080` (host port 8000 was
-already occupied by an unrelated `ssh` tunnel on this machine).
+Container = the compose stack on `127.0.0.1:8080` (host port 8000 is occupied by
+an unrelated `ssh` tunnel on this machine).
 
 ### Concurrency 1
 
 | Target | RPS | p50 | p95 | p99 | max |
 |---|---|---|---|---|---|
-| Bare metal | 319.8 | 3.08 ms | 3.36 ms | 3.64 ms | 8.09 ms |
-| Container | 268.1 | 3.64 ms | 4.12 ms | 5.35 ms | 27.38 ms |
+| Bare metal | 313.8 | 3.12 ms | 3.54 ms | 3.89 ms | 10.08 ms |
+| Container | 249.0 | 3.68 ms | 5.04 ms | 10.99 ms | 61.80 ms |
 
 ### Concurrency 20
 
 | Target | RPS | p50 | p95 | p99 | max |
 |---|---|---|---|---|---|
-| Bare metal | 344.4 | 56.18 ms | 72.88 ms | 96.92 ms | 105.82 ms |
-| Container | 309.3 | 63.34 ms | 85.49 ms | 99.11 ms | 120.66 ms |
+| Bare metal | 333.9 | 57.36 ms | 76.54 ms | 99.07 ms | 119.42 ms |
+| Container | 302.2 | 64.59 ms | 89.69 ms | 107.74 ms | 137.64 ms |
 
-Single-request latency from the host:
-`curl -w "%{time_total}"` → 0.0076 s bare metal, 0.0093 s containerised
-(`X-Response-Time-Ms` header on the same request: 9.3 ms).
+Single request from the host, `curl -w "%{time_total}"`: 0.0056 s bare metal,
+0.0250 s containerised on a cold connection (`X-Response-Time-Ms` for the same
+request shows the app spent ~9 ms of it).
 
 The container costs ~0.6 ms at p50 and ~10 % RPS. That is the Docker Desktop
-VM's network path (`gVisor`/`vmnet` port forwarding), not the runtime: the
-in-container healthcheck sees the same app. The p99 gap closes almost entirely
-under concurrency — at 20 in-flight requests both targets are bounded by the
-same thing, sklearn inference on the threadpool, not by the network hop.
+VM's port-forwarding path, not the runtime — the in-VM healthcheck sees the same
+app. Under concurrency the gap narrows in relative terms: at 20 in-flight
+requests both targets are bounded by the same thing, sklearn inference on
+FastAPI's threadpool, not by the network hop. Note both plateau near ~330 RPS
+regardless of concurrency — that is the single-worker CPU ceiling, and it is
+what `--workers` would move, not the container boundary.
 
-## Correctness of the containerised service
+## Containerised service, verified
 
 ```
-GET  /v1/health                       200  {"status":"ok"}
-GET  /v1/ready                        200  {"status":"ready"}
-POST /v1/predict  (sample.json)       200  {"transaction_id":"TXN-2026-00042",
-                                            "fraud_probability":0.557066,
-                                            "decision":"allow",
-                                            "model_version":"v3.2.0",
-                                            "trace_id":"989f8779c78b494a"}
-POST /v1/predict  (amount_sar: -5)    422
-POST /v1/predict  (unknown field)     422
-docker exec sda-api-1 whoami          app   (uid=10001 gid=10001)
+GET  /v1/health                      200  {"status":"ok"}
+GET  /v1/ready                       200  {"status":"ready"}
+POST /v1/predict  (sample.json)      200  {"transaction_id":"TXN-2026-00042",
+                                           "fraud_probability":0.557066,
+                                           "decision":"allow",
+                                           "model_version":"v3.2.0",
+                                           "trace_id":"fd7e809df4fc4448"}
+POST /v1/predict  (amount_sar: -5)   422
+POST /v1/predict  (unknown field)    422
+docker exec sda-api-1 whoami         app   (uid=10001, gid=10001)
+docker compose ps                    api healthy, redis healthy
 ```
 
-`fraud_probability` is byte-identical to the Lab 2 bare-metal result — the
-container changes packaging, not scoring.
+`fraud_probability` is identical to the bare-metal Lab 2 result, before and
+after the strip/prune pass. Containerising changed packaging, not scoring.
