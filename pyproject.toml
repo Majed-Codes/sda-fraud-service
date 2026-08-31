@@ -23,7 +23,9 @@ where = ["src"]
 test = [
     "pytest",
     "pytest-cov",
-    "httpx",
+    # starlette's TestClient deprecates the httpx 0.x transport; httpx2 is the
+    # supported one and keeps the suite's output free of warnings.
+    "httpx2",
 ]
 
 [tool.pytest.ini_options]
@@ -35,7 +37,7 @@ markers = [
     "behavioural: asserts on the real model artefact's behaviour",
     "slow: excluded from the default inner-loop run",
 ]
-addopts = "--strict-markers"
+addopts = "--strict-markers -W error::DeprecationWarning"
 
 [tool.coverage.run]
 branch = true
