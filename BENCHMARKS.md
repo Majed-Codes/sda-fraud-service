@@ -74,6 +74,27 @@ service_healthy` (~6.4 s) and its own healthcheck is sampled only every
 `interval: 5s`. Tightening `interval`/`start_period` moves this number; it will
 not make the service ready any sooner.
 
+### Container cold start
+
+The compose figure above is gated by healthcheck polling. The container's own
+cold start, measured as `docker run` to a 200 on `/v1/ready`:
+
+| Stage | Seconds |
+|---|---|
+| `docker run -d` returns | 0.18 |
+| interpreter start + import fastapi/pandas/sklearn | ~1.01 |
+| `SklearnModel.load` + warm-up prediction (`model_loaded seconds=0.658`) | 0.66 |
+| **`/v1/ready` returns 200** | **1.85** |
+
+First `/v1/predict` after that: 6.8 ms, against a warm p50 of 4.18 ms. The
+Lab 2 startup warm-up is doing its job — without it the first request pays
+sklearn's lazy init instead.
+
+So the 11.6 s to `healthy` is ~85 % waiting, not working: 6.4 s of it is the
+Redis dependency gate and the rest is healthcheck `interval: 5s` granularity.
+An orchestrator with a 1 s probe interval would see this container ready in
+about 2 s.
+
 ## Latency: container vs bare metal
 
 Bare metal = `uvicorn` in the local `.venv` (CPython 3.11) on `127.0.0.1:8090`.
