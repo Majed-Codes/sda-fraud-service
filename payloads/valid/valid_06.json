@@ -1,0 +1,8 @@
+{
+  "transaction_id": "TXN-2026-02916",
+  "amount_sar": 122.64,
+  "channel": "pos",
+  "merchant_category": "HEALTHCARE",
+  "customer_id": "CUST-0445",
+  "timestamp": "2026-06-24T06:31:29Z"
+}

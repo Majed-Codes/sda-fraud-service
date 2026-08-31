@@ -1,0 +1,8 @@
+{
+  "transaction_id": "TXN-2026-01868",
+  "amount_sar": 8.12,
+  "channel": "pos",
+  "merchant_category": "FUEL",
+  "customer_id": "CUST-0773",
+  "timestamp": "2026-07-28T22:19:02Z"
+}

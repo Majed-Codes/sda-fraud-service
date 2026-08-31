@@ -1,0 +1,8 @@
+{
+  "transaction_id": "TXN-2026-03235",
+  "amount_sar": 33.13,
+  "channel": "pos",
+  "merchant_category": "TELECOM",
+  "customer_id": "CUST-0331",
+  "timestamp": "2026-06-15T00:30:09Z"
+}

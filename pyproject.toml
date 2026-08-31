@@ -1,0 +1,20 @@
+[project]
+name = "fraud-service"
+version = "0.1.0"
+description = "Fraud-scoring notebook (pre-refactor)"
+requires-python = ">=3.12"
+dependencies = [
+    "pandas",
+    "scikit-learn",
+    "joblib",
+    "pydantic>=2",
+    "fastapi",
+    "uvicorn[standard]",
+]
+
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

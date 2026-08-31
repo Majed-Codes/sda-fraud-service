@@ -1,0 +1,8 @@
+{
+  "transaction_id": "TXN-2026-03406",
+  "amount_sar": 77.9,
+  "channel": "atm",
+  "merchant_category": "PHARMACY",
+  "customer_id": "CUST-0314",
+  "timestamp": "2026-07-02T00:00:20Z"
+}

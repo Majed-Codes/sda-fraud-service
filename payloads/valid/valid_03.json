@@ -1,0 +1,8 @@
+{
+  "transaction_id": "TXN-2026-04544",
+  "amount_sar": 115.55,
+  "channel": "pos",
+  "merchant_category": "RESTAURANT",
+  "customer_id": "CUST-0330",
+  "timestamp": "2026-06-17T18:55:08Z"
+}
