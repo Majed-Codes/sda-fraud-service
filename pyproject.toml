@@ -18,3 +18,33 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "pytest-cov",
+    "httpx",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+markers = [
+    "unit: pure logic, no model artefact, no HTTP",
+    "integration: exercises the API through a TestClient with a stubbed model",
+    "behavioural: asserts on the real model artefact's behaviour",
+    "slow: excluded from the default inner-loop run",
+]
+addopts = "--strict-markers"
+
+[tool.coverage.run]
+branch = true
+source = ["fraud_service"]
+
+[tool.coverage.report]
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "\\.\\.\\.",
+]

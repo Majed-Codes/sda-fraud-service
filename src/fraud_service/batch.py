@@ -24,9 +24,9 @@ def main() -> None:
             transaction_id=record["transaction_id"], amount_sar=record["amount_sar"],
             channel=record["channel"], merchant_category=record["merchant_category"],
             customer_id=record["customer_id"], timestamp=record["timestamp"])
-        decision = scorer.score(txn)
-        counts[decision.value] += 1
-        rows.append({"transaction_id": txn.transaction_id, "decision": decision.value})
+        score = scorer.score(txn)
+        counts[score.decision.value] += 1
+        rows.append({"transaction_id": txn.transaction_id, "decision": score.decision.value})
 
     pd.DataFrame(rows).to_csv("scored.csv", index=False)
     print(f"Scored {len(rows):,} transactions -> scored.csv "

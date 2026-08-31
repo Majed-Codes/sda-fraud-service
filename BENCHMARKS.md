@@ -145,3 +145,39 @@ docker compose ps                    api healthy, redis healthy
 
 `fraud_probability` is identical to the bare-metal Lab 2 result, before and
 after the strip/prune pass. Containerising changed packaging, not scoring.
+
+## Test suite (Lab 4)
+
+194 tests. `pythonpath = ["src"]` in `pyproject.toml` means no editable install
+is needed to run them.
+
+| Selection | Tests | Wall time |
+|---|---|---|
+| `pytest -m unit` | 36 | **0.04 s** |
+| `pytest -m "not slow"` | 192 | 4.3 s |
+| `pytest` (everything) | 194 | 14.2 s |
+
+The two `slow` tests are the full 5000-row golden sweep and its casing
+round-trip. Everything else stays in the inner loop.
+
+Branch coverage on `domain` / `service` / `api`, from `pytest -m "not slow"`:
+
+| Module | Cover |
+|---|---|
+| `api/app.py` | 100% |
+| `api/errors.py` | 100% |
+| `api/routes.py` | 100% |
+| `api/schemas.py` | 100% |
+| `domain/entities.py` | 100% |
+| `domain/policies.py` | 100% |
+| `service/scorer.py` | 100% |
+| **Total** | **100%** (189 statements, 16 branches) |
+
+That total is a consequence, not a target. The report before the last test was
+94%, and the missing lines were `lifespan` in `app.py` — the code that loads the
+artefact, warms it and wires the scorer. It is the only uncovered region that
+fails the container at *startup* rather than degrading a single response, which
+is why `tests/behavioural/test_startup.py` closes that gap and not an easier one.
+
+`batch.py` is deliberately outside the coverage target: it is a `main()`
+composition root with no logic of its own.

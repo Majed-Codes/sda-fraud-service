@@ -9,6 +9,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 
 from fraud_service.adapters.sklearn_model import SklearnModel
+from fraud_service.api.errors import install_error_handlers
 from fraud_service.api.routes import router
 from fraud_service.service.scorer import FraudScorer
 
@@ -30,6 +31,7 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     app = FastAPI(title="Fraud Scoring Service", lifespan=lifespan)
     app.include_router(router, prefix="/v1")
+    install_error_handlers(app)
 
     @app.middleware("http")
     async def trace_and_time(request: Request, call_next):

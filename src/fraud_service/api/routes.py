@@ -40,9 +40,10 @@ def health() -> HealthResponse:
 
 
 @router.get("/ready", response_model=ReadyResponse)
-def ready(request: Request) -> ReadyResponse:
-    """Readiness: can I serve correctly RIGHT NOW? Checks the model loaded."""
-    if getattr(request.app.state, "scorer", None) is None:
-        raise HTTPException(status_code=503, detail="warming up",
-                            headers={"Retry-After": "5"})
+def ready(scorer: FraudScorer = Depends(get_scorer)) -> ReadyResponse:
+    """Readiness: can I serve correctly RIGHT NOW?
+
+    Deliberately the same dependency /predict resolves, not a second look at
+    app.state - readiness that checks a different thing from the one the hot
+    path needs is readiness that can lie."""
     return ReadyResponse(status="ready")
