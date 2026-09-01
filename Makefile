@@ -38,7 +38,7 @@ cov:  ## Branch coverage over domain/service/api
 		--cov=fraud_service.api --cov-report=term-missing
 
 serve:  ## Run the API locally with reload
-	$(VENV)/bin/fastapi dev src/fraud_service/api/app.py
+	$(VENV)/bin/uvicorn --factory fraud_service.api.app:create_app --reload --port 8000
 
 image:  ## Build the multi-stage runtime image
 	docker build -f Dockerfile -t $(IMAGE) .

@@ -38,13 +38,20 @@ class Settings(BaseSettings):
                 f"artefact not found at {value.absolute()} - set FRAUD_MODEL_PATH")
         return value
 
+    @field_validator("registry_token", mode="before")
+    @classmethod
+    def empty_means_unset(cls, value: object) -> object:
+        # An unfilled line in an env file would otherwise read as SecretStr("").
+        return None if value == "" else value
+
     @model_validator(mode="after")
     def reject_unknown_variables(self) -> "Settings":
         # extra="forbid" covers the .env file and init kwargs but not the
         # environment, so FRAUD_BLOCK_THRESHOLDD would otherwise be ignored.
-        known = {f"FRAUD_{name.upper()}" for name in type(self).model_fields}
+        # Matched case-insensitively because pydantic-settings reads it that way.
+        known = {f"fraud_{name}" for name in type(self).model_fields}
         unknown = sorted(k for k in os.environ
-                         if k.startswith("FRAUD_") and k not in known)
+                         if k.lower().startswith("fraud_") and k.lower() not in known)
         if unknown:
             raise ValueError(f"unknown FRAUD_* variables: {', '.join(unknown)}")
         return self

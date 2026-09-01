@@ -5,7 +5,7 @@ import logging
 import pytest
 import structlog
 
-from fraud_service.logging_setup import MASK, configure_logging
+from fraud_service.logging_setup import HANDLER_NAME, MASK, configure_logging
 
 pytestmark = pytest.mark.unit
 
@@ -13,6 +13,7 @@ pytestmark = pytest.mark.unit
 @pytest.fixture(autouse=True)
 def reset_logging():
     yield
+    structlog.contextvars.clear_contextvars()
     structlog.reset_defaults()
     logging.getLogger().handlers.clear()
 
@@ -63,3 +64,24 @@ def test_stdlib_records_render_as_json_too(capsys):
     configure_logging("INFO")
     logging.getLogger("uvicorn.error").info("Started server process [1]")
     assert json.loads(capsys.readouterr().out.strip().splitlines()[-1])["event"]
+
+
+def test_configure_logging_leaves_foreign_handlers_alone(caplog):
+    # Assigning root.handlers would evict pytest's capture handler, silencing
+    # every assertion made through caplog after startup.
+    with caplog.at_level(logging.INFO):
+        logging.getLogger("probe").info("before")
+        configure_logging("INFO")
+        logging.getLogger("probe").info("after")
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert "before" in messages
+    assert "after" in messages
+
+
+def test_configure_logging_is_idempotent():
+    configure_logging("INFO")
+    configure_logging("INFO")
+    root = logging.getLogger()
+    owned = [h for h in root.handlers if h.get_name() == HANDLER_NAME]
+    assert len(owned) == 1

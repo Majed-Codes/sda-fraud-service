@@ -15,7 +15,7 @@ cleanup() {
   local status=$?
   if [ $status -ne 0 ]; then
     echo "--- container logs ---" >&2
-    docker logs "$CONTAINER" 2>&1 | tail -50 >&2
+    docker logs "$CONTAINER" 2>&1 | tail -50 >&2 || true
   fi
   docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
   exit $status

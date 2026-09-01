@@ -17,9 +17,11 @@ python scripts/loadtest.py 127.0.0.1 8080 1000 20
 | Image | Dockerfile | Base | Image size | Pull size | Cold build | Warm rebuild |
 |---|---|---|---|---|---|---|
 | `fraud-service:naive` | `Dockerfile.naive` | `python:3.13` | **1715 MB** | 572 MB | 133 s (`--no-cache`) | n/a - `COPY . .` precedes the install |
-| `fraud-service:slim` | `Dockerfile` | `python:3.13-slim`, multi-stage | **437 MB** | 118 MB | 195 s | **15 s** |
+| `fraud-service:slim` | `Dockerfile` | `python:3.13-slim`, multi-stage | **437 MB** arm64 · **368 MB** amd64 | 118 MB | 195 s | **15 s** |
 
-**3.9x smaller, and under the 500 MB capstone gate.**
+**3.9x smaller, and under the 500 MB gate.** The local figures are arm64; CI
+builds on amd64, where the same Dockerfile produces 368 MB, and that is the
+number the budget check in `ci.yml` actually tests.
 
 ### Which size number is the size number
 
@@ -29,7 +31,7 @@ same image, and they are not interchangeable:
 | Metric | slim | How to read it |
 |---|---|---|
 | Sum of layer sizes (`docker history`) | **437 MB** | The uncompressed image size - what `docker images` reports on a classic Docker install, and what "image size" conventionally means |
-| `docker image inspect --format '{{.Size}}'` | 118 MB | Compressed content size: what a `docker pull` actually transfers |
+| `docker image inspect --format '{{.Size}}'` | 118 MB | On this containerd-backed Docker Desktop, the compressed content size - roughly what a `docker pull` transfers. On a classic install the same field reports the uncompressed size |
 | Docker Desktop's `docker images` DISK USAGE column | 561 MB | Extracted snapshot on this host, including snapshotter overhead. Host bookkeeping, not a property of the image |
 
 Where the 1278 MB difference from the naive build goes, largest first:
@@ -37,8 +39,9 @@ Where the 1278 MB difference from the naive build goes, largest first:
 1. `python:3.13` carries a full build toolchain and headers - ~1.0 GB before a
    single dependency lands. `python:3.13-slim` is ~215 MB.
 2. `build-essential` exists only in the builder stage.
-3. The naive image ships the whole build context - `data/`, the notebook, the
-   editable-install source tree.
+3. The naive image ships the editable-install source tree and its build
+   artefacts. (`.dockerignore` keeps `data/`, the notebook and the tests out of
+   *both* builds, so those are not part of the gap.)
 4. Builder-side pruning: site-package `tests/` directories, `.pyi` stubs, and
    `strip --strip-unneeded` over every `.so` (the numeric stack ships large
    debug symbol tables).
@@ -108,7 +111,7 @@ cold start, measured as `docker run` to a 200 on `/v1/ready`:
 | `SklearnModel.load` + warm-up prediction | 0.66 |
 | **`/v1/ready` returns 200** | **1.01** |
 
-First `/v1/predict` after that: 6.8 ms, against a warm p50 of 4.18 ms. The
+First `/v1/predict` after that: 6.8 ms, against a warm p50 of 3.68 ms. The
 Lab 2 startup warm-up is doing its job — without it the first request pays
 sklearn's lazy init instead.
 
@@ -141,7 +144,8 @@ Single request from the host, `curl -w "%{time_total}"`: 0.0056 s bare metal,
 0.0250 s containerised on a cold connection (`X-Response-Time-Ms` for the same
 request shows the app spent ~9 ms of it).
 
-The container costs ~0.6 ms at p50 and ~10 % RPS. That is the Docker Desktop
+At concurrency 1 the container costs ~0.6 ms at p50 and 21 % of throughput; at
+concurrency 20 the throughput gap narrows to ~10 %. That is the Docker Desktop
 VM's port-forwarding path, not the runtime — the in-VM healthcheck sees the same
 app. Under concurrency the gap narrows in relative terms: at 20 in-flight
 requests both targets are bounded by the same thing, sklearn inference on
@@ -170,14 +174,14 @@ after the strip/prune pass. Containerising changed packaging, not scoring.
 
 ## Test suite (Lab 4)
 
-194 tests. `pythonpath = ["src"]` in `pyproject.toml` means no editable install
+226 tests. `pythonpath = ["src"]` in `pyproject.toml` means no editable install
 is needed to run them.
 
 | Selection | Tests | Wall time |
 |---|---|---|
-| `pytest -m unit` | 36 | **0.04 s** |
-| `pytest -m "not slow"` | 192 | 4.3 s |
-| `pytest` (everything) | 194 | 14.2 s |
+| `pytest -m unit` | 63 | **0.04 s** |
+| `pytest -m "not slow"` | 224 | 2.9 s |
+| `pytest` (everything) | 226 | 7.3 s |
 
 The two `slow` tests are the full 5000-row golden sweep and its casing
 round-trip. Everything else stays in the inner loop.
@@ -193,7 +197,7 @@ Branch coverage on `domain` / `service` / `api`, from `pytest -m "not slow"`:
 | `domain/entities.py` | 100% |
 | `domain/policies.py` | 100% |
 | `service/scorer.py` | 100% |
-| **Total** | **100%** (189 statements, 16 branches) |
+| **Total** | **100%** (205 statements, 16 branches) |
 
 That total is a consequence, not a target. The report before the last test was
 94%, and the missing lines were `lifespan` in `app.py` — the code that loads the
@@ -227,7 +231,7 @@ ensemble, an ONNX session), and it proves the model can score before the service
 reports ready.
 
 Consistent with the container numbers above: first `/v1/predict` after a cold
-start was 6.8 ms against a warm p50 of 4.18 ms.
+start was 6.8 ms against a warm p50 of 3.68 ms.
 
 ## Latency from the logs alone
 

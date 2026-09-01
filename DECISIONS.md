@@ -43,9 +43,10 @@ on the lock file. The wheel is unpacked with `python -m zipfile` rather than
 
 `__pycache__` stays in the image.
 
-Removing it is an attractive line in a size table and a disaster in practice:
-with `PYTHONDONTWRITEBYTECODE=1` the interpreter recompiles numpy, scipy, pandas
-and scikit-learn on every container start and can never cache the result. Cold
+Removing it is an attractive line in a size table and a disaster in practice.
+`PYTHONDONTWRITEBYTECODE=1` is set, so nothing recompiled at runtime is ever
+cached: delete the install-time `__pycache__` and the interpreter recompiles
+numpy, scipy, pandas and scikit-learn on every single container start. Cold
 start went from **1.0 s to 32.3 s**. A 48 MB saving is worth roughly nothing;
 thirty seconds of startup is the difference between a rolling deploy and an
 outage. The budget was found elsewhere — stripped debug symbols, no `tests/`

@@ -118,7 +118,14 @@ jobs:
 
       - name: Smoke the built image
         id: smoke
-        run: ./scripts/smoke.sh ${{ env.IMAGE }}:${{ github.sha }} 8199 2>&1 | tee smoke.log
+        # Default is `bash -e`, which has no pipefail: piping to tee would
+        # return tee's status and swallow every assertion in the script.
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./scripts/smoke.sh "${IMAGE}:${GITHUB_SHA}" 8199 2>&1 | tee smoke.log
+        env:
+          IMAGE: ${{ env.IMAGE }}
 
       - name: Smoke log
         if: always()
@@ -129,10 +136,15 @@ jobs:
           if-no-files-found: warn
 
       - name: Record the image size against the 500 MB budget
+        shell: bash
         run: |
-          mb=$(docker history --format '{{.Size}}' "${IMAGE}:${GITHUB_SHA}" | awk '
+          sizes=$(docker history --format '{{.Size}}' "${IMAGE}:${GITHUB_SHA}")
+          # An empty read would sum to 0 and pass the budget silently.
+          [ -n "$sizes" ] || { echo "docker history returned nothing"; exit 1; }
+          mb=$(printf '%s\n' "$sizes" | awk '
             function tomb(s){
-              if (s ~ /GB$/) return substr(s,1,length(s)-2)*1024
+              # docker history formats decimal, not binary.
+            if (s ~ /GB$/) return substr(s,1,length(s)-2)*1000
               if (s ~ /MB$/) return substr(s,1,length(s)-2)
               if (s ~ /kB$/) return substr(s,1,length(s)-2)/1024
               if (s ~ /B$/)  return substr(s,1,length(s)-1)/1048576

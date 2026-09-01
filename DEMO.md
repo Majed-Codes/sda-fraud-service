@@ -91,5 +91,5 @@ docker compose down
 ```
 
 Numbers worth saying out loud: 437 MB image against a 500 MB budget, 15 s warm
-rebuild, 1.0 s cold start, 226 tests at 100% branch coverage in 2.4 s.
+rebuild, 1.0 s cold start, 226 tests, of which the 224 non-slow ones hold 100% branch coverage in 2.9 s.
 Everything measured on this machine and written down in `BENCHMARKS.md`.

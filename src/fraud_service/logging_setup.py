@@ -17,6 +17,7 @@ SENSITIVE_KEYS = {"password", "token", "secret", "api_key", "authorization",
 MASK = "***MASKED***"
 
 UVICORN_LOGGERS = ("uvicorn", "uvicorn.error", "uvicorn.access", "fastapi")
+HANDLER_NAME = "fraud_json"
 
 
 def _mask_sensitive(
@@ -46,15 +47,21 @@ def configure_logging(level: str = "INFO", *, json: bool = True) -> None:
     )
 
     handler = logging.StreamHandler(sys.stdout)
+    handler.set_name(HANDLER_NAME)
     handler.setFormatter(structlog.stdlib.ProcessorFormatter(
         foreign_pre_chain=shared,
         processors=[structlog.stdlib.ProcessorFormatter.remove_processors_meta,
                     renderer],
     ))
 
+    # Replace only the handler this function owns. Assigning root.handlers would
+    # evict foreign ones - pytest's caplog among them - and silence them.
     root = logging.getLogger()
-    root.handlers = [handler]
-    root.setLevel(level)
+    for existing in [h for h in root.handlers if h.get_name() == HANDLER_NAME]:
+        root.removeHandler(existing)
+    root.addHandler(handler)
+    if root.level == logging.NOTSET or root.level > logging.getLevelNamesMapping()[level]:
+        root.setLevel(level)
     for name in UVICORN_LOGGERS:
         logger = logging.getLogger(name)
         logger.handlers.clear()

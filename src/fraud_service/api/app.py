@@ -61,7 +61,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             git_sha=settings.git_sha)
 
         started = time.perf_counter()
-        response = await call_next(request)
+        try:
+            response = await call_next(request)
+        except Exception:
+            # ServerErrorMiddleware sits outside this one and builds the 500,
+            # so without this the requests most worth seeing are the ones with
+            # no latency line at all.
+            log.warning("http_request", status=500,
+                        latency_ms=round((time.perf_counter() - started) * 1000, 1))
+            raise
         latency_ms = round((time.perf_counter() - started) * 1000, 1)
 
         response.headers["X-Trace-Id"] = trace_id
@@ -78,5 +86,3 @@ def _warmup_features() -> FeatureVector:
         merchant_category="GROCERY", customer_id="warmup",
         timestamp=datetime.now(UTC)).to_features()
 
-
-app = create_app()

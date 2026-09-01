@@ -34,8 +34,9 @@ make serve       # fastapi dev on :8000
 | `GET` | `/v1/health` | Liveness. No I/O, always 200 while the process is up. |
 | `GET` | `/v1/ready` | Readiness. 503 until the model is loaded and wired. |
 
-Every response carries `X-Trace-Id` and `X-Response-Time-Ms`. Failures return one
-envelope shape — `{"error": {"code", "message"}, "trace_id"}` — and never a traceback.
+Every response carries `X-Trace-Id`; successful ones and 4xx also carry
+`X-Response-Time-Ms`. Failures return one envelope shape —
+`{"error": {"code", "message"}, "trace_id"}` — and never a traceback.
 
 ```bash
 curl -s localhost:8080/v1/predict -H 'content-type: application/json' \
@@ -45,7 +46,7 @@ curl -s localhost:8080/v1/predict -H 'content-type: application/json' \
 ## Test
 
 ```bash
-make test-unit   # 36 tests, under a second
+make test-unit   # 63 tests, under a second
 make test        # everything except the slow golden sweep
 make test-all    # including the 5000-row golden file
 make cov         # branch coverage over domain/service/api
@@ -72,18 +73,31 @@ being true.
 
 ## Configuration
 
+Everything reads from `FRAUD_*` and is validated at startup — a bad value or an
+unrecognised variable stops the process with the field named, rather than
+failing on a later request.
+
 | Variable | Default | Meaning |
 |---|---|---|
-| `REDIS_URL` | `redis://redis:6379/0` | Feature cache, set by compose |
+| `FRAUD_MODEL_PATH` | `models/fraud_xgb_v3.joblib` | Must exist, or startup fails |
+| `FRAUD_BLOCK_THRESHOLD` | `0.85` | Bounded 0.5–0.99 |
+| `FRAUD_LOG_LEVEL` | `INFO` | One of DEBUG/INFO/WARNING/ERROR/CRITICAL |
+| `FRAUD_LOG_JSON` | `true` | `false` gives readable console logs in dev |
+| `FRAUD_GIT_SHA` | `dev` | Stamped on every log line; injected by CI |
+| `FRAUD_REDIS_URL` | `redis://redis:6379/0` | Reserved for the feature cache; not yet read by the service |
+| `FRAUD_REGISTRY_TOKEN` | unset | `SecretStr`, never rendered in logs or reprs |
 
-The model is baked into the image at `models/fraud_xgb_v3.joblib`; the block
-threshold is `0.85`, wired in `api/app.py`.
+The model is baked into the image at `models/fraud_xgb_v3.joblib`. Compose runs
+Redis and gates the API's healthcheck on it, but the service does not talk to it
+yet — the variable is wired through so the cache can land without a config
+change.
 
 ## Everything else
 
 - `BENCHMARKS.md` — image sizes, build and rebuild times, cold start, latency,
   suite timings. Measured on this machine, reproducible with `scripts/loadtest.py`.
 - `DECISIONS.md` — the six calls worth arguing about, and why they went that way.
+- `DEMO.md` — a five-minute walkthrough, clone to running.
 - `INCIDENT.md` — the secret-leak drill and the response order.
 - `.github/workflows/ci.yml` — lint, test and secret scan in parallel, image
   smoke, GHCR publish on `main` tagged by commit SHA.

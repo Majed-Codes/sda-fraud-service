@@ -20,11 +20,12 @@ COPY requirements.txt ./
 RUN pip install -r requirements.txt \
  && find /opt/venv -type d -name tests -prune -exec rm -rf {} + \
  && find /opt/venv -type f -name '*.so' -exec strip --strip-unneeded {} + \
- && rm -rf /opt/venv/lib/python3.13/site-packages/pip \
-           /opt/venv/lib/python3.13/site-packages/pip-*.dist-info \
-           /opt/venv/lib/python3.13/site-packages/setuptools \
-           /opt/venv/lib/python3.13/site-packages/setuptools-*.dist-info \
-           /opt/venv/lib/python3.13/site-packages/pkg_resources \
+ && rm -rf /opt/venv/lib/python*/site-packages/pip \
+           /opt/venv/lib/python*/site-packages/pip-*.dist-info \
+           /opt/venv/lib/python*/site-packages/setuptools \
+           /opt/venv/lib/python*/site-packages/setuptools-*.dist-info \
+           /opt/venv/lib/python*/site-packages/pkg_resources \
+           /opt/venv/bin/pip /opt/venv/bin/pip3 /opt/venv/bin/pip3.* \
  && find /opt/venv -name '*.pyi' -delete
 
 COPY pyproject.toml ./
@@ -52,14 +53,18 @@ COPY --from=builder /opt/venv /opt/venv
 # the stdlib. That keeps pip out of the runtime image entirely, and keeps this
 # layer small and independent of the venv above it.
 COPY --from=builder /wheels /wheels
-RUN python -m zipfile -e /wheels/*.whl /opt/venv/lib/python3.13/site-packages/ \
+# Destination derived, never hardcoded: `zipfile -e` creates whatever path it
+# is given, so a base-image bump would silently extract into a directory that
+# is not on sys.path and the container would start and die on import.
+RUN SITE="$(python -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')" \
+ && python -m zipfile -e /wheels/*.whl "$SITE" \
  && rm -rf /wheels \
- && rm -rf /usr/local/lib/python3.13/site-packages/pip \
-           /usr/local/lib/python3.13/site-packages/pip-*.dist-info \
-           /usr/local/lib/python3.13/site-packages/setuptools \
-           /usr/local/lib/python3.13/site-packages/setuptools-*.dist-info \
-           /usr/local/lib/python3.13/site-packages/pkg_resources \
-           /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.13
+ && rm -rf /usr/local/lib/python*/site-packages/pip \
+           /usr/local/lib/python*/site-packages/pip-*.dist-info \
+           /usr/local/lib/python*/site-packages/setuptools \
+           /usr/local/lib/python*/site-packages/setuptools-*.dist-info \
+           /usr/local/lib/python*/site-packages/pkg_resources \
+           /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.*
 
 WORKDIR /app
 COPY --chown=app:app models ./models
@@ -71,4 +76,4 @@ EXPOSE 8000
 HEALTHCHECK --interval=5s --timeout=3s --start-period=20s --retries=3 \
   CMD ["python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/v1/ready', timeout=2).status == 200 else 1)"]
 
-CMD ["uvicorn", "fraud_service.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "--factory", "fraud_service.api.app:create_app", "--host", "0.0.0.0", "--port", "8000"]
