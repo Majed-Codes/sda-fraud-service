@@ -1,0 +1,157 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Least privilege by default; the one job that needs more widens it itself.
+permissions:
+  contents: read
+
+# A superseded commit's run is wasted runner minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.13"
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  # lint and test carry no `needs:`, so they start together.
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - run: pip install -e ".[dev]"
+
+      - name: Ruff
+        run: ruff check src tests
+
+      - name: Mypy (strict, over the seams)
+        run: mypy
+
+      - name: Import-linter (the layer contract, enforced)
+        run: lint-imports
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - run: pip install -e ".[test]"
+
+      - name: Fast suite, with the coverage floor
+        run: >
+          pytest -m "not slow"
+          --cov=fraud_service.domain --cov=fraud_service.service --cov=fraud_service.api
+          --cov-report=term-missing --cov-report=xml --cov-fail-under=80
+
+      - name: Behavioural gate against the real artefact
+        run: pytest -m behavioural
+
+      - name: Coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ github.sha }}
+          path: coverage.xml
+          if-no-files-found: warn
+
+  image-smoke:
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build (load locally, do not push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: ${{ env.IMAGE }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke the built image
+        run: ./scripts/smoke.sh ${{ env.IMAGE }}:${{ github.sha }} 8199
+
+      - name: Record the image size against the 500 MB budget
+        run: |
+          mb=$(docker history --format '{{.Size}}' "${IMAGE}:${GITHUB_SHA}" | awk '
+            function tomb(s){
+              if (s ~ /GB$/) return substr(s,1,length(s)-2)*1024
+              if (s ~ /MB$/) return substr(s,1,length(s)-2)
+              if (s ~ /kB$/) return substr(s,1,length(s)-2)/1024
+              if (s ~ /B$/)  return substr(s,1,length(s)-1)/1048576
+              return 0
+            } { t += tomb($1) } END { printf "%.0f", t }')
+          echo "image size: ${mb} MB (budget 500)"
+          echo "### Image size: ${mb} MB / 500 MB budget" >> "$GITHUB_STEP_SUMMARY"
+          [ "$mb" -le 500 ] || { echo "image exceeds the 500 MB budget"; exit 1; }
+        env:
+          IMAGE: ${{ env.IMAGE }}
+
+      - name: Scan for HIGH/CRITICAL CVEs
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.IMAGE }}:${{ github.sha }}
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+
+  publish:
+    runs-on: ubuntu-latest
+    needs: [image-smoke]
+    # Push to main only. Never on pull_request: a fork PR runs untrusted code
+    # in a context that must not hold registry credentials.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          # Short-lived, job-scoped. Never a personal access token.
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push, tagged by commit - never :latest
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ env.IMAGE }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Report the digest
+        run: |
+          echo "### Published" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`${IMAGE}@${DIGEST}\`" >> "$GITHUB_STEP_SUMMARY"
+        env:
+          IMAGE: ${{ env.IMAGE }}
+          DIGEST: ${{ steps.push.outputs.digest }}

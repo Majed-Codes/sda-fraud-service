@@ -1,6 +1,7 @@
 """Wiring happens HERE and only here - this is the 'composition root' idea
 from lecture. Every other file only knows about protocols/interfaces."""
 import time
+from pathlib import Path
 
 import pandas as pd
 
@@ -11,7 +12,7 @@ from fraud_service.service.scorer import FraudScorer
 
 def main() -> None:
     t0 = time.perf_counter()
-    model = SklearnModel.load("models/fraud_xgb_v3.joblib")
+    model = SklearnModel.load(Path("models/fraud_xgb_v3.joblib"))
     print(f"Loaded model fraud_xgb {model.model_version} in {time.perf_counter()-t0:.2f}s")
 
     scorer = FraudScorer(model=model, block_threshold=0.85)

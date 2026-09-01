@@ -3,20 +3,22 @@ now for the HTTP entrypoint. The model loads ONCE, here, in lifespan -
 never at import time, never per-request."""
 import time
 import uuid
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 
 from fraud_service.adapters.sklearn_model import SklearnModel
 from fraud_service.api.errors import install_error_handlers
 from fraud_service.api.routes import router
+from fraud_service.domain.entities import FeatureVector
 from fraud_service.service.scorer import FraudScorer
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     t0 = time.perf_counter()
     model = SklearnModel.load(Path("models/fraud_xgb_v3.joblib"))
     # Warm-up: pay the lazy-init cost now, not on the first real user request.
@@ -35,7 +37,10 @@ def create_app() -> FastAPI:
     install_error_handlers(app)
 
     @app.middleware("http")
-    async def trace_and_time(request: Request, call_next):
+    async def trace_and_time(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
         trace_id = uuid.uuid4().hex[:16]
         request.state.trace_id = trace_id
         t0 = time.perf_counter()
@@ -48,12 +53,12 @@ def create_app() -> FastAPI:
     return app
 
 
-def _warmup_features():
+def _warmup_features() -> FeatureVector:
     from datetime import datetime
 
-    from fraud_service.domain.entities import Transaction
+    from fraud_service.domain.entities import Channel, Transaction
     return Transaction(
-        transaction_id="WARMUP-0000", amount_sar=100.0, channel="pos",
+        transaction_id="WARMUP-0000", amount_sar=100.0, channel=Channel.POS,
         merchant_category="GROCERY", customer_id="warmup",
         timestamp=datetime.now(UTC)).to_features()
 

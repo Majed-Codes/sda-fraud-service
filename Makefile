@@ -16,8 +16,10 @@ install:  ## Editable install plus the dev toolchain
 run-batch:  ## Score data/transactions_sample.csv into scored.csv
 	$(PY) -m fraud_service.batch
 
-lint:  ## ruff, no autofix
+lint: ## The full lint gate CI runs: style, types, architecture
 	$(VENV)/bin/ruff check src tests
+	$(VENV)/bin/mypy
+	$(VENV)/bin/lint-imports
 
 format:  ## ruff with autofix
 	$(VENV)/bin/ruff check --fix src tests

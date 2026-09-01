@@ -24,8 +24,13 @@ trap cleanup EXIT
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
-if lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
-  fail "port $PORT is already in use; a squatting listener silently shadows the container"
+# A listener already on this port silently shadows Docker's published port,
+# and the test then asserts against the wrong process. Skip the check rather
+# than fail it where lsof is absent.
+if command -v lsof >/dev/null 2>&1; then
+  if lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+    fail "port $PORT is already in use; a squatting listener silently shadows the container"
+  fi
 fi
 
 echo "starting $IMAGE as $CONTAINER on :$PORT"

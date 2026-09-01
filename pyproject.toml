@@ -31,6 +31,7 @@ dev = [
     "fraud-service[test]",
     "ruff",
     "mypy",
+    "import-linter",
 ]
 
 [tool.pytest.ini_options]
@@ -73,3 +74,34 @@ select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "ARG", "PTH", "RET"]
 # Fixtures are requested by name, so pytest passes arguments a plain function
 # would never use; ARG001 flags exactly that pattern.
 "tests/*" = ["ARG001"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src/fraud_service"]
+
+[[tool.mypy.overrides]]
+# joblib and sklearn ship no type information; the adapter is the one place
+# allowed to touch them, and it re-types their output at its boundary.
+module = ["joblib.*", "sklearn.*", "pandas.*"]
+ignore_missing_imports = true
+
+[tool.importlinter]
+root_package = "fraud_service"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Clean architecture layers"
+type = "layers"
+layers = [
+    "fraud_service.api",
+    "fraud_service.adapters",
+    "fraud_service.service",
+    "fraud_service.domain",
+]
+
+[[tool.importlinter.contracts]]
+name = "Domain and service stay framework-free"
+type = "forbidden"
+source_modules = ["fraud_service.domain", "fraud_service.service"]
+forbidden_modules = ["fastapi", "starlette", "sklearn", "joblib", "pandas"]
