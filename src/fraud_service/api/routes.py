@@ -9,8 +9,7 @@ router = APIRouter(tags=["fraud"])
 
 
 def get_scorer(request: Request) -> FraudScorer:
-    """DI seam: Lab 4's tests override this one function to inject a fake
-    model - no real sklearn artefact needed to test the API contract."""
+    """The seam tests override to inject a fake model."""
     scorer: FraudScorer | None = getattr(request.app.state, "scorer", None)
     if scorer is None:                       # startup incomplete/failed
         raise HTTPException(status_code=503, detail="Model not ready",
@@ -18,10 +17,8 @@ def get_scorer(request: Request) -> FraudScorer:
     return scorer
 
 
-# NOT async def - sklearn inference is CPU-bound. FastAPI runs plain `def`
-# routes in a thread pool automatically; `async def` here would run the
-# CPU-bound call directly on the single event loop and block every other
-# in-flight request until it finishes.
+# Not async: sklearn inference is CPU-bound, and FastAPI runs plain `def`
+# routes in a threadpool. As `async def` it would block the event loop.
 @router.post("/predict", response_model=PredictResponse)
 def predict(body: PredictRequest, request: Request,
             scorer: Annotated[FraudScorer, Depends(get_scorer)]) -> PredictResponse:
@@ -41,14 +38,8 @@ def health() -> HealthResponse:
     return HealthResponse(status="ok")
 
 
-# The dependency is required for its effect, not its value: get_scorer raises
-# 503 when the model is not wired. Declared here rather than as an unused
-# parameter, so the signature says what the handler actually uses.
+# Declared as a dependency, not a parameter: needed for its 503, not its value.
 @router.get("/ready", response_model=ReadyResponse, dependencies=[Depends(get_scorer)])
 def ready() -> ReadyResponse:
-    """Readiness: can I serve correctly RIGHT NOW?
-
-    Deliberately the same dependency /predict resolves, not a second look at
-    app.state - readiness that checks a different thing from the one the hot
-    path needs is readiness that can lie."""
+    """Readiness resolves the same dependency /predict does, so it cannot lie."""
     return ReadyResponse(status="ready")

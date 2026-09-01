@@ -1,5 +1,4 @@
-"""The decision bands. With block_threshold=0.85 and REVIEW_BAND=0.15 the
-boundaries sit at 0.70 and 0.85, and both are inclusive-lower."""
+"""Decision bands. At threshold 0.85 the boundaries are 0.70 and 0.85, both inclusive."""
 import pytest
 
 from fraud_service.domain.entities import Decision

@@ -1,6 +1,4 @@
-"""Feature extraction. This is the code path that the notebook got wrong by
-recomputing amount_log a second way, so the normalisation rules are pinned
-here rather than left to the model to absorb."""
+"""Feature extraction: the normalisation rules, pinned."""
 import math
 from datetime import UTC, datetime
 
@@ -25,7 +23,7 @@ def test_merchant_category_is_normalised(raw: str, expected: str) -> None:
 
 @pytest.mark.unit
 @pytest.mark.parametrize("hour,expected", [
-    (0, 1), (3, 1), (5, 1),   # night runs up to but not including 06:00
+    (0, 1), (3, 1), (5, 1),   # night is [00:00, 06:00)
     (6, 0), (7, 0), (12, 0), (22, 0), (23, 0),
 ])
 def test_is_night_boundary(hour: int, expected: int) -> None:

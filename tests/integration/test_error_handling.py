@@ -1,5 +1,4 @@
-"""An unhandled exception must reach the client as an envelope and a trace
-id - never a traceback, a module path, or an internal message."""
+"""An unhandled exception reaches the client as an envelope, never a traceback."""
 import pytest
 from fastapi.testclient import TestClient
 
@@ -20,8 +19,7 @@ class ExplodingModel(StubModel):
 
 @pytest.fixture
 def exploding_client() -> TestClient:
-    """raise_server_exceptions=False makes TestClient behave like a real
-    server: return the handler's 500 instead of re-raising into the test."""
+    """raise_server_exceptions=False returns the handler's 500 instead of raising."""
     app = create_app()
     app.dependency_overrides[get_scorer] = lambda: FraudScorer(
         model=ExplodingModel(), block_threshold=BLOCK_THRESHOLD)
@@ -48,8 +46,7 @@ def test_unhandled_exception_leaks_nothing(exploding_client, valid_payload):
 
 
 def test_the_trace_id_is_logged_with_the_traceback(exploding_client, valid_payload, caplog):
-    # The detail has to survive somewhere - it goes to the log, keyed by the
-    # same id the client was handed, or the trace id buys the operator nothing.
+    # The detail must survive in the log under the id the client was given.
     with caplog.at_level("ERROR"):
         response = exploding_client.post("/v1/predict", json=valid_payload)
 
@@ -66,8 +63,7 @@ def test_unknown_route_returns_the_envelope_too(client):
 
 
 def test_ready_returns_503_before_the_model_is_loaded(valid_payload):
-    # No dependency override and no lifespan: app.state.scorer is absent,
-    # which is exactly the state an orchestrator probes during a rollout.
+    # No override, no lifespan: the state an orchestrator probes mid-rollout.
     client = TestClient(create_app(), raise_server_exceptions=False)
 
     ready = client.get("/v1/ready")
@@ -80,7 +76,6 @@ def test_ready_returns_503_before_the_model_is_loaded(valid_payload):
 
 
 def test_health_stays_up_while_the_model_is_missing():
-    # Liveness must not fail just because readiness does, or the orchestrator
-    # restarts a process that is loading perfectly well.
+    # Liveness must not fail with readiness, or a loading process gets killed.
     client = TestClient(create_app(), raise_server_exceptions=False)
     assert client.get("/v1/health").status_code == 200

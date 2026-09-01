@@ -1,10 +1,4 @@
-"""Shared test helpers.
-
-Deliberately not in conftest.py. conftest is a pytest plugin module that the
-framework collects by path - importing from it only resolves while pytest is
-driving, so editors, linters and a plain `python -c` all fail on it. Helpers
-that tests import belong in an ordinary module; conftest keeps the fixtures.
-"""
+"""Shared helpers. Kept out of conftest.py, which only resolves under pytest."""
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -16,11 +10,7 @@ BLOCK_THRESHOLD = 0.85
 
 
 class StubModel:
-    """Satisfies the Model protocol by shape alone - no inheritance, no sklearn.
-
-    Records what it was asked to score so tests can assert on the features the
-    API actually derived from the request.
-    """
+    """Satisfies the Model protocol by shape alone, and records its calls."""
 
     def __init__(self, probability: float = STUB_PROBABILITY,
                  model_version: str = "v-test") -> None:

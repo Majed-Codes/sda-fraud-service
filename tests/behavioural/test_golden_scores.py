@@ -1,12 +1,6 @@
-"""Training/serving skew guard.
+"""Training/serving skew guard against the recorded v3 scores.
 
-data/golden_scores_v3.csv holds the scores the v3 pipeline produced for a
-5000-row sample. If the serving path ever computes a feature differently -
-the exact defect the notebook had, recomputing amount_log a second way -
-these scores move and this test is the thing that notices.
-
-The full sweep is marked slow; a fixed head sample runs in the default
-inner-loop suite so the golden path is never entirely unexercised.
+The full 5000-row sweep is marked slow; a head sample runs per-commit.
 """
 import csv
 from pathlib import Path
@@ -30,9 +24,7 @@ def _load_golden() -> list[dict]:
 
 
 def _rescore(scorer, row: dict) -> float:
-    # The golden file's column is `mcc` - the already-normalised category -
-    # so feeding it back through to_features must be a no-op. That is part of
-    # what is being asserted.
+    # The `mcc` column is already normalised, so to_features must be a no-op here.
     return scorer.score(Transaction(
         transaction_id=row["transaction_id"],
         amount_sar=float(row["amount_sar"]),
@@ -72,9 +64,7 @@ def test_every_golden_row_matches(real_scorer):
 
 @pytest.mark.slow
 def test_golden_rows_survive_a_casing_round_trip(real_scorer):
-    # Same rows, category lower-cased on the way in. Normalisation must put
-    # them back on the identical score, or the API and the batch path disagree
-    # for the same transaction.
+    # Lower-cased on the way in; normalisation must land on the same score.
     rows = _load_golden()[:SAMPLE_SIZE]
     for row in rows:
         lowered = dict(row, mcc=row["mcc"].lower().replace("_", " "))

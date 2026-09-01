@@ -1,9 +1,4 @@
-"""Fixtures for the whole suite. Helpers live in tests/support.py.
-
-The API tests never touch sklearn. `get_scorer` is the seam the routes depend
-on, so overriding that one function swaps the entire model out for a stub - no
-artefact on disk, no pandas, no inference cost.
-"""
+"""Fixtures for the whole suite. Helpers live in tests/support.py."""
 import pytest
 from fastapi.testclient import TestClient
 
@@ -24,9 +19,7 @@ def client(stub_model: StubModel) -> TestClient:
     app = create_app()
     app.dependency_overrides[get_scorer] = lambda: FraudScorer(
         model=stub_model, block_threshold=BLOCK_THRESHOLD)
-    # Deliberately not `with TestClient(...)`: entering the context manager runs
-    # lifespan, which loads the real artefact off disk. These tests are about
-    # the HTTP contract, so the stub is the whole point.
+    # Not `with TestClient(...)`: that runs lifespan, which loads the real artefact.
     return TestClient(app)
 
 
@@ -44,8 +37,7 @@ def valid_payload() -> dict:
 
 @pytest.fixture(scope="session")
 def real_model() -> SklearnModel:
-    """The actual artefact, loaded once for the whole session. Only the
-    behavioural tests use this - everything else uses the stub."""
+    """The real artefact, loaded once per session."""
     if not MODEL_PATH.exists():
         pytest.skip(f"model artefact missing at {MODEL_PATH}")
     return SklearnModel.load(MODEL_PATH)

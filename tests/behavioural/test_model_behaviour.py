@@ -1,5 +1,4 @@
-"""Properties of the real artefact. These are the tests that catch a model
-swap that is silently wrong - the stub cannot tell you anything here."""
+"""Properties of the real artefact - what the stub cannot tell you."""
 from datetime import UTC, datetime
 
 import pytest
@@ -13,9 +12,7 @@ pytestmark = pytest.mark.behavioural
     "electronics", "Electronics", "ELECTRONICS", "  electronics  ", "eLeCtRoNiCs",
 ])
 def test_merchant_category_casing_does_not_move_the_score(real_scorer, variant):
-    # to_features upper-cases and strips, so these must be the same transaction
-    # as far as the pipeline is concerned. If this drifts, the OneHotEncoder is
-    # silently mapping variants to its unknown category.
+    # If this drifts, the OneHotEncoder is folding variants into `unknown`.
     baseline = real_scorer.score(make_transaction(merchant_category="ELECTRONICS"))
     variant_score = real_scorer.score(make_transaction(merchant_category=variant))
 
@@ -30,8 +27,7 @@ def test_spaces_and_underscores_are_the_same_category(real_scorer):
 
 
 def test_unknown_category_is_absorbed_not_raised(real_scorer):
-    # handle_unknown="ignore" is what keeps a new MCC from taking the service
-    # down at 3am. Assert it, because it is one constructor argument away.
+    # handle_unknown="ignore" is one constructor argument away from an outage.
     score = real_scorer.score(make_transaction(merchant_category="CRYPTO KIOSK"))
 
     assert 0.0 <= score.probability <= 1.0

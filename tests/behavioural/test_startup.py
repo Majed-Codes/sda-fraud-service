@@ -1,9 +1,6 @@
-"""The composition root, exercised for real.
+"""Lifespan for real: load the artefact, warm it, wire the scorer.
 
-Everything else in the suite overrides `get_scorer` and never runs lifespan,
-which leaves the code that actually loads the artefact, warms it and wires the
-scorer completely unasserted - the one gap in the coverage report that can
-take the container down at startup rather than degrade a response.
+Nothing else in the suite runs lifespan, so without this it is unasserted.
 """
 import pytest
 from fastapi.testclient import TestClient
@@ -32,7 +29,7 @@ def test_lifespan_loads_warms_and_wires_the_real_model(monkeypatch, valid_payloa
     assert client.get("/v1/ready").status_code == 503
 
     with client:
-        # Warm-up ran during startup, before any client request arrived.
+        # Warm-up ran during startup, before any request arrived.
         assert calls == ["predict"], "startup did not warm the model"
 
         scorer = app.state.scorer
