@@ -27,6 +27,11 @@ test = [
     # supported one and keeps the suite's output free of warnings.
     "httpx2",
 ]
+dev = [
+    "fraud-service[test]",
+    "ruff",
+    "mypy",
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
@@ -42,11 +47,29 @@ addopts = "--strict-markers -W error::DeprecationWarning"
 [tool.coverage.run]
 branch = true
 source = ["fraud_service"]
+omit = [
+    # A main() composition root with no logic of its own to cover.
+    "*/fraud_service/batch.py",
+]
 
 [tool.coverage.report]
 show_missing = true
+fail_under = 80
 exclude_lines = [
     "pragma: no cover",
     "if TYPE_CHECKING:",
     "\\.\\.\\.",
 ]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "ARG", "PTH", "RET"]
+
+[tool.ruff.lint.per-file-ignores]
+# Fixtures are requested by name, so pytest passes arguments a plain function
+# would never use; ARG001 flags exactly that pattern.
+"tests/*" = ["ARG001"]

@@ -4,6 +4,7 @@ never at import time, never per-request."""
 import time
 import uuid
 from contextlib import asynccontextmanager
+from datetime import UTC
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -48,13 +49,13 @@ def create_app() -> FastAPI:
 
 
 def _warmup_features():
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     from fraud_service.domain.entities import Transaction
     return Transaction(
         transaction_id="WARMUP-0000", amount_sar=100.0, channel="pos",
         merchant_category="GROCERY", customer_id="warmup",
-        timestamp=datetime.now(timezone.utc)).to_features()
+        timestamp=datetime.now(UTC)).to_features()
 
 
 app = create_app()

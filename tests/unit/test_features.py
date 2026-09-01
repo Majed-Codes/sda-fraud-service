@@ -2,7 +2,7 @@
 recomputing amount_log a second way, so the normalisation rules are pinned
 here rather than left to the model to absorb."""
 import math
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -29,7 +29,7 @@ def test_merchant_category_is_normalised(raw: str, expected: str) -> None:
     (6, 0), (7, 0), (12, 0), (22, 0), (23, 0),
 ])
 def test_is_night_boundary(hour: int, expected: int) -> None:
-    timestamp = datetime(2026, 7, 5, hour, 0, tzinfo=timezone.utc)
+    timestamp = datetime(2026, 7, 5, hour, 0, tzinfo=UTC)
     features = make_transaction(timestamp=timestamp).to_features()
     assert features.values["is_night"] == expected
     assert features.values["hour_of_day"] == hour

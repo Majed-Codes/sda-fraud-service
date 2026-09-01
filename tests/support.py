@@ -5,7 +5,7 @@ framework collects by path - importing from it only resolves while pytest is
 driving, so editors, linters and a plain `python -c` all fail on it. Helpers
 that tests import belong in an ordinary module; conftest keeps the fixtures.
 """
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fraud_service.domain.entities import FeatureVector, Transaction
@@ -40,7 +40,7 @@ def make_transaction(**overrides) -> Transaction:
         "channel": "ecom",
         "merchant_category": "ELECTRONICS",
         "customer_id": "CUST-0042",
-        "timestamp": datetime(2026, 7, 5, 22, 14, tzinfo=timezone.utc),
+        "timestamp": datetime(2026, 7, 5, 22, 14, tzinfo=UTC),
     }
     fields.update(overrides)
     return Transaction(**fields)

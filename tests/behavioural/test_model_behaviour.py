@@ -1,6 +1,6 @@
 """Properties of the real artefact. These are the tests that catch a model
 swap that is silently wrong - the stub cannot tell you anything here."""
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -49,9 +49,9 @@ def test_larger_amounts_score_higher(real_scorer):
 
 def test_night_transactions_score_higher_than_daytime(real_scorer):
     night = real_scorer.score(make_transaction(
-        timestamp=datetime(2026, 7, 5, 3, 0, tzinfo=timezone.utc)))
+        timestamp=datetime(2026, 7, 5, 3, 0, tzinfo=UTC)))
     day = real_scorer.score(make_transaction(
-        timestamp=datetime(2026, 7, 5, 14, 0, tzinfo=timezone.utc)))
+        timestamp=datetime(2026, 7, 5, 14, 0, tzinfo=UTC)))
 
     assert night.probability > day.probability
 
@@ -62,7 +62,7 @@ def test_probability_stays_in_range_across_the_input_space(real_scorer):
             for hour in (0, 5, 6, 23):
                 score = real_scorer.score(make_transaction(
                     amount_sar=amount, channel=channel,
-                    timestamp=datetime(2026, 7, 5, hour, tzinfo=timezone.utc)))
+                    timestamp=datetime(2026, 7, 5, hour, tzinfo=UTC)))
                 assert 0.0 <= score.probability <= 1.0
 
 

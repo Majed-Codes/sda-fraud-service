@@ -1,3 +1,5 @@
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from fraud_service.api.schemas import HealthResponse, PredictRequest, PredictResponse, ReadyResponse
@@ -22,7 +24,7 @@ def get_scorer(request: Request) -> FraudScorer:
 # in-flight request until it finishes.
 @router.post("/predict", response_model=PredictResponse)
 def predict(body: PredictRequest, request: Request,
-           scorer: FraudScorer = Depends(get_scorer)) -> PredictResponse:
+            scorer: Annotated[FraudScorer, Depends(get_scorer)]) -> PredictResponse:
     score = scorer.score(body.to_domain())
     return PredictResponse(
         transaction_id=score.transaction_id,
@@ -39,8 +41,11 @@ def health() -> HealthResponse:
     return HealthResponse(status="ok")
 
 
-@router.get("/ready", response_model=ReadyResponse)
-def ready(scorer: FraudScorer = Depends(get_scorer)) -> ReadyResponse:
+# The dependency is required for its effect, not its value: get_scorer raises
+# 503 when the model is not wired. Declared here rather than as an unused
+# parameter, so the signature says what the handler actually uses.
+@router.get("/ready", response_model=ReadyResponse, dependencies=[Depends(get_scorer)])
+def ready() -> ReadyResponse:
     """Readiness: can I serve correctly RIGHT NOW?
 
     Deliberately the same dependency /predict resolves, not a second look at

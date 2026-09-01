@@ -181,3 +181,30 @@ is why `tests/behavioural/test_startup.py` closes that gap and not an easier one
 
 `batch.py` is deliberately outside the coverage target: it is a `main()`
 composition root with no logic of its own.
+
+## Startup warm-up: is it worth it? (Lab 2 task 5)
+
+`lifespan` runs one throwaway prediction before the service reports ready.
+Measured across 5 fresh model loads, timing the first `predict_proba` against
+the median of 50 that follow it:
+
+| | Median |
+|---|---|
+| First call after `SklearnModel.load` | 1.11 ms |
+| Steady-state call | 1.07 ms |
+| **Penalty avoided per load** | **0.04 ms** |
+
+The honest reading: for *this* artefact the warm-up buys almost nothing. The
+first load in a fresh process cost 6.37 ms against 1.09-1.13 ms for the four
+that followed, so the real one-time cost is process-wide - scipy/numpy import
+and first-touch allocation - not per-model lazy init. A LogisticRegression
+behind a OneHotEncoder has essentially no lazy state to build.
+
+It stays in `lifespan` because it costs ~5 ms once at startup and it is the
+difference that matters when the artefact is later swapped for something with
+real lazy initialisation - a gradient-boosted ensemble, an ONNX session, or
+anything that compiles on first use. It also proves the model can score before
+the service reports ready, which is worth more than the milliseconds.
+
+Consistent with the container numbers above: first `/v1/predict` after a cold
+start was 6.8 ms against a warm p50 of 4.18 ms.

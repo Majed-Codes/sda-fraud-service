@@ -14,7 +14,7 @@ SECRET = "connection string postgres://user:hunter2@prod-db:5432"
 
 
 class ExplodingModel(StubModel):
-    def predict_proba(self, features):
+    def predict_proba(self, _features):
         raise RuntimeError(f"model backend unreachable: {SECRET}")
 
 

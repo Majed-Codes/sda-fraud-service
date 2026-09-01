@@ -9,6 +9,7 @@ import logging
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+
 # Starlette's HTTPException, not FastAPI's subclass: the router raises the
 # base class for 404/405, so registering the subclass misses them.
 from starlette.exceptions import HTTPException
@@ -39,7 +40,7 @@ def install_error_handlers(app: FastAPI) -> None:
         return response
 
     @app.exception_handler(Exception)
-    async def unhandled_error(request: Request, exc: Exception) -> JSONResponse:
+    async def unhandled_error(request: Request, _exc: Exception) -> JSONResponse:
         # exc_info goes to the logs; the client gets the trace id, nothing else.
         logger.exception("unhandled_error trace_id=%s path=%s",
                          getattr(request.state, "trace_id", "unavailable"),
