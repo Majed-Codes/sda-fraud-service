@@ -4,12 +4,18 @@ services:
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     ports:
       - "6379:6379"
+    volumes:
+      - feature-cache:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 5
       start_period: 5s
+    deploy:
+      resources:
+        limits:
+          memory: 128M
 
   api:
     build:
@@ -17,7 +23,9 @@ services:
       dockerfile: Dockerfile
     image: fraud-service:slim
     environment:
-      REDIS_URL: redis://redis:6379/0
+      FRAUD_REDIS_URL: redis://redis:6379/0
+      FRAUD_LOG_LEVEL: INFO
+      FRAUD_GIT_SHA: ${GIT_SHA:-dev}
     ports:
       - "8080:8000"
     depends_on:
@@ -29,3 +37,12 @@ services:
       timeout: 3s
       start_period: 20s
       retries: 3
+    # Sized deliberately: the numeric stack idles near 300MB, so a second
+    # worker under load hits this ceiling rather than the host's.
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+volumes:
+  feature-cache:
