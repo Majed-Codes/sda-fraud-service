@@ -83,6 +83,8 @@ threshold is `0.85`, wired in `api/app.py`.
 
 - `BENCHMARKS.md` — image sizes, build and rebuild times, cold start, latency,
   suite timings. Measured on this machine, reproducible with `scripts/loadtest.py`.
-- `.github/workflows/ci.yml` — lint and test in parallel, image smoke, GHCR
-  publish on `main` tagged by commit SHA.
+- `DECISIONS.md` — the six calls worth arguing about, and why they went that way.
+- `INCIDENT.md` — the secret-leak drill and the response order.
+- `.github/workflows/ci.yml` — lint, test and secret scan in parallel, image
+  smoke, GHCR publish on `main` tagged by commit SHA.
 - `make help` lists every target.
