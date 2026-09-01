@@ -5,7 +5,7 @@ IMAGE := fraud-service:slim
 COMPOSE_URL := http://localhost:8080
 
 .DEFAULT_GOAL := help
-.PHONY: help install run-batch lint format test test-unit test-all cov serve image image-naive up down smoke clean
+.PHONY: help install run-batch lint format test test-unit test-all cov serve image image-naive up down smoke smoke-compose clean
 
 help:  ## List targets
 	@grep -E '^[a-zA-Z-]+:.*?## ' $(MAKEFILE_LIST) | awk -F':.*?## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -50,7 +50,10 @@ up:  ## Start the compose stack and wait for healthy
 down:  ## Stop the compose stack
 	docker compose down
 
-smoke:  ## Hit the running stack the way Lab 3 does
+smoke: image  ## Build the image, then run it in isolation and assert on it
+	./scripts/smoke.sh $(IMAGE)
+
+smoke-compose:  ## Assert against an already-running compose stack
 	curl -fsS $(COMPOSE_URL)/v1/ready && echo
 	curl -fsS -X POST $(COMPOSE_URL)/v1/predict \
 		-H 'content-type: application/json' -d @payloads/sample.json && echo
