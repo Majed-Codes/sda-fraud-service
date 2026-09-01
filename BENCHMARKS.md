@@ -32,11 +32,6 @@ same image, and they are not interchangeable:
 | `docker image inspect --format '{{.Size}}'` | 118 MB | Compressed content size: what a `docker pull` actually transfers |
 | Docker Desktop's `docker images` DISK USAGE column | 561 MB | Extracted snapshot on this host, including snapshotter overhead. Host bookkeeping, not a property of the image |
 
-An earlier revision of this file quoted the 561 MB disk-usage figure as the
-image size and concluded the image missed the 500 MB gate. It does not - the
-uncompressed image is 437 MB. Quote the layer sum, and say which metric you
-mean.
-
 Where the 1278 MB difference from the naive build goes, largest first:
 
 1. `python:3.13` carries a full build toolchain and headers - ~1.0 GB before a
@@ -221,17 +216,15 @@ the median of 50 that follow it:
 | Steady-state call | 1.07 ms |
 | **Penalty avoided per load** | **0.04 ms** |
 
-The honest reading: for *this* artefact the warm-up buys almost nothing. The
-first load in a fresh process cost 6.37 ms against 1.09-1.13 ms for the four
+For *this* artefact the warm-up buys almost nothing. The first load in a fresh process cost 6.37 ms against 1.09-1.13 ms for the four
 that followed, so the real one-time cost is process-wide - scipy/numpy import
 and first-touch allocation - not per-model lazy init. A LogisticRegression
 behind a OneHotEncoder has essentially no lazy state to build.
 
-It stays in `lifespan` because it costs ~5 ms once at startup and it is the
-difference that matters when the artefact is later swapped for something with
-real lazy initialisation - a gradient-boosted ensemble, an ONNX session, or
-anything that compiles on first use. It also proves the model can score before
-the service reports ready, which is worth more than the milliseconds.
+It stays in `lifespan` anyway: it costs ~5 ms once, it matters the moment the
+artefact is swapped for something with real lazy initialisation (a boosted
+ensemble, an ONNX session), and it proves the model can score before the service
+reports ready.
 
 Consistent with the container numbers above: first `/v1/predict` after a cold
 start was 6.8 ms against a warm p50 of 4.18 ms.
