@@ -53,7 +53,13 @@ COPY --from=builder /opt/venv /opt/venv
 # layer small and independent of the venv above it.
 COPY --from=builder /wheels /wheels
 RUN python -m zipfile -e /wheels/*.whl /opt/venv/lib/python3.13/site-packages/ \
- && rm -rf /wheels
+ && rm -rf /wheels \
+ && rm -rf /usr/local/lib/python3.13/site-packages/pip \
+           /usr/local/lib/python3.13/site-packages/pip-*.dist-info \
+           /usr/local/lib/python3.13/site-packages/setuptools \
+           /usr/local/lib/python3.13/site-packages/setuptools-*.dist-info \
+           /usr/local/lib/python3.13/site-packages/pkg_resources \
+           /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.13
 
 WORKDIR /app
 COPY --chown=app:app models ./models
