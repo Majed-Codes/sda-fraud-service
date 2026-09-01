@@ -13,11 +13,11 @@ RUN python -m venv /opt/venv
 
 WORKDIR /build
 
-COPY requirements.txt ./
+COPY requirements.lock ./
 # Everything that shrinks the venv happens HERE, before it is copied into the
 # runtime stage. Deleting in the runtime stage only adds whiteout entries - the
 # bytes stay in the layer that already shipped them.
-RUN pip install -r requirements.txt \
+RUN pip install -r requirements.lock \
  && find /opt/venv -type d -name tests -prune -exec rm -rf {} + \
  && find /opt/venv -type f -name '*.so' -exec strip --strip-unneeded {} + \
  && rm -rf /opt/venv/lib/python*/site-packages/pip \

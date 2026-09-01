@@ -1,3 +1,9 @@
+# Fully-resolved dependency set, including transitive pins, used to build the
+# image reproducibly. Direct dependencies are declared in pyproject.toml;
+# everything else here is pulled in by them and pinned so a rebuild of an old
+# commit produces the same image.
+#
+# Regenerate with:  pip install -e . && pip freeze --exclude-editable
 annotated-doc==0.0.5
 annotated-types==0.8.0
 anyio==4.14.2

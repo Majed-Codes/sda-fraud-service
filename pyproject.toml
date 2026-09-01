@@ -1,7 +1,10 @@
 [project]
 name = "fraud-service"
 version = "0.1.0"
-description = "Fraud scoring service"
+description = "Fraud scoring service exposing a scikit-learn model over a validated HTTP API"
+authors = [{ name = "Majed Alotaibi" }]
+readme = "README.md"
+keywords = ["fraud-detection", "fastapi", "mlops", "clean-architecture"]
 requires-python = ">=3.11"
 dependencies = [
     "pandas",
