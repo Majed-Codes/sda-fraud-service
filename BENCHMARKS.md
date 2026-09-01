@@ -14,29 +14,56 @@ python scripts/loadtest.py 127.0.0.1 8080 1000 20
 
 ## Image size and build time
 
-| Image | Dockerfile | Base | Size | Cold build | Warm rebuild after 1-line `routes.py` edit |
-|---|---|---|---|---|---|
-| `fraud-service:naive` | `Dockerfile.naive` | `python:3.13` | **2.32 GB** | 133 s (`--no-cache`) | n/a — `COPY . .` precedes the install, so any edit reinstalls everything |
-| `fraud-service:slim` | `Dockerfile` | `python:3.13-slim`, multi-stage | **573 MB** | 195 s | **15 s** |
+| Image | Dockerfile | Base | Image size | Pull size | Cold build | Warm rebuild |
+|---|---|---|---|---|---|---|
+| `fraud-service:naive` | `Dockerfile.naive` | `python:3.13` | **1715 MB** | 572 MB | 133 s (`--no-cache`) | n/a - `COPY . .` precedes the install |
+| `fraud-service:slim` | `Dockerfile` | `python:3.13-slim`, multi-stage | **437 MB** | 118 MB | 195 s | **15 s** |
 
-**4.1× smaller.** Where the 1.75 GB went, largest first:
+**3.9x smaller, and under the 500 MB capstone gate.**
 
-1. `python:3.13` ships a full build toolchain and headers — ~1.0 GB before a
-   single dependency lands. `python:3.13-slim` is ~150 MB.
-2. `build-essential` exists only in the builder stage and never reaches the
-   runtime image.
-3. The naive image ships the entire build context — `data/` (20 k CSV rows),
-   the notebook, the editable-install source tree. The runtime stage ships
-   `/opt/venv`, the installed wheel, and `models/`.
-4. Pruning inside the builder: `tests/` directories removed from site-packages
-   and `strip --strip-unneeded` over every `.so` (numpy, scipy, scikit-learn
-   and pandas ship large debug symbol tables). This alone took the multi-stage
-   image from 744 MB to 573 MB — 23 % — and the scored output is unchanged.
-5. `pip`, `setuptools` and `pkg_resources` are deleted from the runtime venv
-   after the wheel is installed. Nothing at runtime installs packages.
+### Which size number is the size number
 
-The residual 573 MB is scipy/numpy/scikit-learn/pandas. That is the honest
-floor for this dependency set, not packaging slack.
+Docker Desktop's containerd image store reports three different figures for the
+same image, and they are not interchangeable:
+
+| Metric | slim | How to read it |
+|---|---|---|
+| Sum of layer sizes (`docker history`) | **437 MB** | The uncompressed image size - what `docker images` reports on a classic Docker install, and what "image size" conventionally means |
+| `docker image inspect --format '{{.Size}}'` | 118 MB | Compressed content size: what a `docker pull` actually transfers |
+| Docker Desktop's `docker images` DISK USAGE column | 561 MB | Extracted snapshot on this host, including snapshotter overhead. Host bookkeeping, not a property of the image |
+
+An earlier revision of this file quoted the 561 MB disk-usage figure as the
+image size and concluded the image missed the 500 MB gate. It does not - the
+uncompressed image is 437 MB. Quote the layer sum, and say which metric you
+mean.
+
+Where the 1278 MB difference from the naive build goes, largest first:
+
+1. `python:3.13` carries a full build toolchain and headers - ~1.0 GB before a
+   single dependency lands. `python:3.13-slim` is ~215 MB.
+2. `build-essential` exists only in the builder stage.
+3. The naive image ships the whole build context - `data/`, the notebook, the
+   editable-install source tree.
+4. Builder-side pruning: site-package `tests/` directories, `.pyi` stubs, and
+   `strip --strip-unneeded` over every `.so` (the numeric stack ships large
+   debug symbol tables).
+5. `pip`, `setuptools` and `pkg_resources` are removed **in the builder**,
+   before the venv is copied. Deleting them in the runtime stage - which this
+   Dockerfile used to do - only writes whiteout entries; the bytes stay in the
+   layer that already shipped them. The runtime stage unpacks the application
+   wheel with `python -m zipfile`, so pip never enters the final image.
+6. `websockets` and `watchfiles` are dropped from `requirements.txt`. They
+   arrive via `uvicorn[standard]`, and this service has no WebSocket route and
+   never runs `--reload` in a container. `uvloop` and `httptools` stay - those
+   are the ones that carry the throughput in the tables below.
+
+### What not to prune
+
+Deleting `__pycache__` saves 48 MB and takes cold start from **1.0 s to 32.3 s**:
+with `PYTHONDONTWRITEBYTECODE=1` the interpreter recompiles numpy, scipy, pandas
+and scikit-learn on *every* container start and can never cache the result. It
+was measured, reverted, and is recorded here because the saving looks free in a
+size table and is anything but.
 
 ### Cache discipline
 
@@ -82,9 +109,9 @@ cold start, measured as `docker run` to a 200 on `/v1/ready`:
 | Stage | Seconds |
 |---|---|
 | `docker run -d` returns | 0.18 |
-| interpreter start + import fastapi/pandas/sklearn | ~1.01 |
-| `SklearnModel.load` + warm-up prediction (`model_loaded seconds=0.658`) | 0.66 |
-| **`/v1/ready` returns 200** | **1.85** |
+| interpreter start + import fastapi/pandas/sklearn | ~0.2 |
+| `SklearnModel.load` + warm-up prediction | 0.66 |
+| **`/v1/ready` returns 200** | **1.01** |
 
 First `/v1/predict` after that: 6.8 ms, against a warm p50 of 4.18 ms. The
 Lab 2 startup warm-up is doing its job — without it the first request pays
