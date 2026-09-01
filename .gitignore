@@ -9,3 +9,7 @@ htmlcov/
 *.egg-info/
 build/
 dist/
+
+.env
+configs/*.env
+!configs/*.env.example

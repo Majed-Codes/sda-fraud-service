@@ -5,7 +5,7 @@ IMAGE := fraud-service:slim
 COMPOSE_URL := http://localhost:8080
 
 .DEFAULT_GOAL := help
-.PHONY: help install run-batch lint format test test-unit test-all cov serve image image-naive up down smoke smoke-compose clean
+.PHONY: help install run-batch lint format test test-unit test-all cov serve image image-naive up down smoke smoke-compose secrets logs-percentiles clean
 
 help:  ## List targets
 	@grep -E '^[a-zA-Z-]+:.*?## ' $(MAKEFILE_LIST) | awk -F':.*?## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -59,6 +59,15 @@ smoke-compose:  ## Assert against an already-running compose stack
 	curl -fsS $(COMPOSE_URL)/v1/ready && echo
 	curl -fsS -X POST $(COMPOSE_URL)/v1/predict \
 		-H 'content-type: application/json' -d @payloads/sample.json && echo
+
+secrets:  ## Scan working tree and history for credentials
+	gitleaks detect --no-git --source .
+	gitleaks detect --source .
+
+logs-percentiles:  ## Latency percentiles from a JSON log stream: make logs-percentiles LOG=run.log
+	jq -s '[.[] | select(.event=="http_request" and .path=="/v1/predict") | .latency_ms] \
+	  | sort | {n: length, p50: .[(length*0.50|floor)], p95: .[(length*0.95|floor)], \
+	            p99: .[(length*0.99|floor)], max: .[-1]}' $(LOG)
 
 clean:  ## Remove test and coverage artefacts
 	rm -rf .pytest_cache .coverage htmlcov

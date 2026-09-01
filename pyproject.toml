@@ -10,6 +10,8 @@ dependencies = [
     "pydantic>=2",
     "fastapi",
     "uvicorn[standard]",
+    "pydantic-settings",
+    "structlog",
 ]
 
 [build-system]
@@ -76,6 +78,7 @@ select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "ARG", "PTH", "RET"]
 "tests/*" = ["ARG001"]
 
 [tool.mypy]
+plugins = ["pydantic.mypy"]
 python_version = "3.11"
 strict = true
 files = ["src/fraud_service"]

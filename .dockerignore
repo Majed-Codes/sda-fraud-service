@@ -22,3 +22,6 @@ BENCHMARKS.md
 Dockerfile*
 docker-compose.yml
 .dockerignore
+.env
+configs
+INCIDENT.md

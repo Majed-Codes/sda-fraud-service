@@ -228,3 +228,39 @@ reports ready.
 
 Consistent with the container numbers above: first `/v1/predict` after a cold
 start was 6.8 ms against a warm p50 of 4.18 ms.
+
+## Latency from the logs alone
+
+Every line the service writes is one JSON object on stdout, so a percentile is a
+`jq` query rather than a second tool. 61 requests against a local server:
+
+```bash
+jq -s '[.[] | select(.event=="http_request" and .path=="/v1/predict") | .latency_ms]
+       | sort | {p50: .[(length*0.50|floor)], p99: .[(length*0.99|floor)]}' run.log
+```
+
+| n | p50 | p95 | p99 | max |
+|---|---|---|---|---|
+| 61 | 2.0 ms | 3.0 ms | 5.0 ms | 5.0 ms |
+
+`make logs-percentiles LOG=run.log` runs it.
+
+Two things had to be true first. Uvicorn installs its own log handlers *after*
+importing the app, so `configure_logging` runs again inside `lifespan` -
+otherwise the access log stays plain text and `jq` fails on the first line of
+it. And stdlib records go through `ProcessorFormatter`, so uvicorn's own lines
+render as JSON rather than being dropped.
+
+What the scoring event carries, and what it does not:
+
+```json
+{"event":"prediction_served","decision":"allow","probability_bucket":0.6,
+ "model_version":"v3.2.0","trace_id":"17bea0e0263d417b","git_sha":"dev",
+ "path":"/v1/predict","method":"POST","level":"info",
+ "timestamp":"2026-09-01T07:56:55.152656Z"}
+```
+
+No `customer_id`, no `amount_sar`, no raw feature values, and the probability is
+rounded to 0.1 steps - a precise score beside an identifier is personal data
+under PDPL. `tests/integration/test_logging_contract.py` asserts their absence
+rather than trusting review.

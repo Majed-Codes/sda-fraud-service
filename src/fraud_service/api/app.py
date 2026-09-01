@@ -1,38 +1,50 @@
-"""The composition root for the API - same idea as batch.py's main(),
-now for the HTTP entrypoint. The model loads ONCE, here, in lifespan -
-never at import time, never per-request."""
+"""Composition root for the API. The model loads once, here, in lifespan."""
 import time
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
-from datetime import UTC
-from pathlib import Path
+from datetime import UTC, datetime
 
+import structlog
 from fastapi import FastAPI, Request, Response
 
 from fraud_service.adapters.sklearn_model import SklearnModel
 from fraud_service.api.errors import install_error_handlers
 from fraud_service.api.routes import router
-from fraud_service.domain.entities import FeatureVector
+from fraud_service.config import Settings
+from fraud_service.domain.entities import Channel, FeatureVector, Transaction
+from fraud_service.logging_setup import configure_logging
 from fraud_service.service.scorer import FraudScorer
+
+log = structlog.get_logger()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    t0 = time.perf_counter()
-    model = SklearnModel.load(Path("models/fraud_xgb_v3.joblib"))
-    # Warm-up: pay the lazy-init cost now, not on the first real user request.
+    settings: Settings = app.state.settings
+    # Again, not only in create_app: uvicorn installs its own handlers after
+    # importing the app, which undoes the configuration done at import time.
+    configure_logging(settings.log_level, json=settings.log_json)
+    started = time.perf_counter()
+    model = SklearnModel.load(settings.model_path)
+    # Pay the lazy-init cost now, not on the first real request.
     model.predict_proba(_warmup_features())
-    print(f"model_loaded version={model.model_version} "
-          f"seconds={time.perf_counter() - t0:.3f}")
-
-    app.state.scorer = FraudScorer(model=model, block_threshold=0.85)
+    app.state.scorer = FraudScorer(model=model,
+                                   block_threshold=settings.block_threshold)
+    log.info("model_loaded", model_version=model.model_version,
+             seconds=round(time.perf_counter() - started, 3),
+             git_sha=settings.git_sha)
     yield
-    print("shutdown_complete")
+    log.info("shutdown_complete")
 
 
-def create_app() -> FastAPI:
+def create_app(settings: Settings | None = None) -> FastAPI:
+    # Settings() raises here, at startup, rather than on the first request.
+    settings = settings or Settings()
+    configure_logging(settings.log_level, json=settings.log_json)
+
     app = FastAPI(title="Fraud Scoring Service", lifespan=lifespan)
+    app.state.settings = settings
     app.include_router(router, prefix="/v1")
     install_error_handlers(app)
 
@@ -43,20 +55,24 @@ def create_app() -> FastAPI:
     ) -> Response:
         trace_id = uuid.uuid4().hex[:16]
         request.state.trace_id = trace_id
-        t0 = time.perf_counter()
+        structlog.contextvars.clear_contextvars()
+        structlog.contextvars.bind_contextvars(
+            trace_id=trace_id, path=request.url.path, method=request.method,
+            git_sha=settings.git_sha)
+
+        started = time.perf_counter()
         response = await call_next(request)
+        latency_ms = round((time.perf_counter() - started) * 1000, 1)
+
         response.headers["X-Trace-Id"] = trace_id
-        response.headers["X-Response-Time-Ms"] = str(
-            round((time.perf_counter() - t0) * 1000, 1))
+        response.headers["X-Response-Time-Ms"] = str(latency_ms)
+        log.info("http_request", status=response.status_code, latency_ms=latency_ms)
         return response
 
     return app
 
 
 def _warmup_features() -> FeatureVector:
-    from datetime import datetime
-
-    from fraud_service.domain.entities import Channel, Transaction
     return Transaction(
         transaction_id="WARMUP-0000", amount_sar=100.0, channel=Channel.POS,
         merchant_category="GROCERY", customer_id="warmup",

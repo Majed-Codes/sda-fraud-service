@@ -1,11 +1,13 @@
 from typing import Annotated
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from fraud_service.api.schemas import HealthResponse, PredictRequest, PredictResponse, ReadyResponse
 from fraud_service.service.scorer import FraudScorer
 
 router = APIRouter(tags=["fraud"])
+log = structlog.get_logger()
 
 
 def get_scorer(request: Request) -> FraudScorer:
@@ -23,6 +25,11 @@ def get_scorer(request: Request) -> FraudScorer:
 def predict(body: PredictRequest, request: Request,
             scorer: Annotated[FraudScorer, Depends(get_scorer)]) -> PredictResponse:
     score = scorer.score(body.to_domain())
+    # Bucketed, and no customer_id or amount: a raw score beside an identifier
+    # is personal data under PDPL.
+    log.info("prediction_served", decision=score.decision.value,
+             probability_bucket=round(score.probability, 1),
+             model_version=score.model_version)
     return PredictResponse(
         transaction_id=score.transaction_id,
         fraud_probability=round(score.probability, 6),
